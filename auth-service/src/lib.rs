@@ -5,6 +5,8 @@ use axum::response::IntoResponse;
 use reqwest::StatusCode;
 use axum::routing::post;
 
+mod routes;
+
 // This struct encapsulates our application-related logic.
 pub struct Application {
     server: Serve<Router, Router>,
