@@ -27,12 +27,12 @@ pub async fn signup(
     let mut user_store = state.user_store.write().await;
 
     // early return AuthAPIError::UserAlreadyExists if email exists in user_store.
-    if user_store.get_user(&user.email).is_ok() {
+    if user_store.get_user(&user.email).await.is_ok() {
         return Err(AuthAPIError::UserAlreadyExists);
     }
 
     // instead of using unwrap, early return AuthAPIError::UnexpectedError if add_user() fails.
-    if let Err(_) = user_store.add_user(user) {
+    if let Err(_) = user_store.add_user(user).await {
         return Err(AuthAPIError::UnexpectedError);
     }
 
