@@ -1,16 +1,17 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use serde::Serialize;
+use uuid::Uuid;
 
 use auth_service::{
     app_state::AppState, services::hashmap_user_store::HashmapUserStore, Application,
 };
 
-use uuid::Uuid;
-
 pub struct TestApp {
     pub address: String,
     pub http_client: reqwest::Client,
 }
+
 
 impl TestApp {
     pub async fn new() -> Self {
@@ -30,6 +31,7 @@ impl TestApp {
             http_client,
         }
     }
+    
 
     pub async fn get_root(&self) -> reqwest::Response {
         self.http_client
@@ -38,6 +40,8 @@ impl TestApp {
             .await
             .expect("Failed to execute request.")
     }
+
+    // TODO: Implement helper functions for all other routes (signup, login, logout, verify-2fa, and verify-token)
     pub async fn post_signup<Body>(&self, body: &Body) -> reqwest::Response
     where
         Body: serde::Serialize,
@@ -49,35 +53,44 @@ impl TestApp {
             .await
             .expect("Failed to execute request.")
     }
-    pub async fn post_login(&self) -> reqwest::Response {
+
+    
+    pub async fn login<T: Serialize> (&self, body: &T) -> reqwest::Response {
         self.http_client
             .post(&format!("{}/login", &self.address))
+            .json(body)
             .send()
             .await
             .expect("Failed to execute request.")
     }
-    pub async fn post_logout(&self) -> reqwest::Response {
+
+    pub async fn logout (&self) -> reqwest::Response {
         self.http_client
-            .post(format!("{}/logout", &self.address))
+            .post(&format!("{}/logout", &self.address))
             .send()
             .await
             .expect("Failed to execute request.")
     }
-    pub async fn post_verify_2fa(&self) -> reqwest::Response {
+
+    pub async fn verify_2fa<T: Serialize> (&self, body: &T) -> reqwest::Response {
         self.http_client
-            .post(format!("{}/verify-2fa", &self.address))
+            .post(&format!("{}/verify-2fa", &self.address))
+            .json(body)
             .send()
             .await
             .expect("Failed to execute request.")
     }
-    pub async fn post_verify_token(&self) -> reqwest::Response {
+
+    pub async fn verify_token<T: Serialize> (&self, body: &T) -> reqwest::Response {
         self.http_client
-            .post(format!("{}/verify-token", &self.address))
+            .post(&format!("{}/verify-token", &self.address))
+            .json(&body)
             .send()
             .await
             .expect("Failed to execute request.")
     }
 }
+
 pub fn get_random_email() -> String {
     format!("{}@example.com", Uuid::new_v4())
 }

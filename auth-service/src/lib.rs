@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use app_state::AppState;
 use axum::{
     http::StatusCode,
@@ -29,7 +31,6 @@ impl Application {
             .route("/login", post(login))
             .route("/verify-2fa", post(verify_2fa))
             .route("/logout", post(logout))
-            .route("/verify-token", post(verify_token));
             .route("/verify-token", post(verify_token))
             .with_state(app_state);
 
