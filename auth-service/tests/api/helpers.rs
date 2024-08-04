@@ -55,7 +55,10 @@ impl TestApp {
     }
 
     
-    pub async fn login<T: Serialize> (&self, body: &T) -> reqwest::Response {
+    pub async fn post_login<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
         self.http_client
             .post(&format!("{}/login", &self.address))
             .json(body)

@@ -127,7 +127,7 @@ async fn should_return_422_if_malformed_input() {
             "password": "password123",
         }),
         serde_json::json!({
-            "email": random_email,
+            "email": "sdunnemail.com",
             "password": "password123",
             "requires2FA": "true"
         }),
