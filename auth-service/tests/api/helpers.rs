@@ -1,40 +1,41 @@
+use reqwest::cookie::Jar;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use serde::Serialize;
-use uuid::Uuid;
-use reqwest::cookie::Jar;
 
 use auth_service::{
     app_state::{AppState, BannedTokenStoreType, TwoFACodeStoreType},
-    services::{
-        hashmap_two_fa_code_store::HashmapTwoFACodeStore, hashmap_user_store::HashmapUserStore, hashset_banned_token_store::HashsetBannedTokenStore
-    }, utils::constants::test,
+    services::{ hashmap_two_fa_code_store::HashmapTwoFACodeStore, hashmap_user_store::HashmapUserStore,
+        hashset_banned_token_store::HashsetBannedTokenStore, mock_email_client::MockEmailClient,
+    },
+    utils::constants::test,
     Application,
 };
+use uuid::Uuid;
 
 pub struct TestApp {
     pub address: String,
-    pub cookie_jar: Arc<Jar>, // New!
-    pub http_client: reqwest::Client,
+    pub cookie_jar: Arc<Jar>,
     pub banned_token_store: BannedTokenStoreType,
     pub two_fa_code_store: TwoFACodeStoreType,
+    pub http_client: reqwest::Client,
 }
-
-
-
 impl TestApp {
     pub async fn new() -> Self {
         let user_store = Arc::new(RwLock::new(HashmapUserStore::default()));
-        let banned_token_store = Arc::new(RwLock::new(HashsetBannedTokenStore::default()));
-        let two_fa_code_store = Arc::new(RwLock::new(HashmapTwoFACodeStore::default()));
+        let banned_token_store = Arc::new(RwLock::new(HashsetBannedTokenStore::default()));let two_fa_code_store = Arc::new(RwLock::new(HashmapTwoFACodeStore::default()));
 
-        let app_state = AppState::new(user_store, banned_token_store.clone(), two_fa_code_store.clone());
+        let email_client = Arc::new(MockEmailClient);
+
+        let app_state = AppState::new(
+            user_store,
+            banned_token_store.clone(),
+            two_fa_code_store.clone(),
+            email_client,
+        );
 
         let app = Application::build(app_state, test::APP_ADDRESS)
-        .await
-        .expect("Failed to build app");
-
-
+            .await
+            .expect("Failed to build app");
         let address = format!("http://{}", app.address.clone());
         #[allow(clippy::let_underscore_future)]
         let _ = tokio::spawn(app.run());
@@ -43,7 +44,6 @@ impl TestApp {
             .cookie_provider(cookie_jar.clone())
             .build()
             .unwrap();
-
         Self {
             address,
             cookie_jar,
@@ -52,8 +52,6 @@ impl TestApp {
             http_client,
         }
     }
-    
-
     pub async fn get_root(&self) -> reqwest::Response {
         self.http_client
             .get(&format!("{}/", &self.address))
@@ -61,8 +59,6 @@ impl TestApp {
             .await
             .expect("Failed to execute request.")
     }
-
-    // TODO: Implement helper functions for all other routes (signup, login, logout, verify-2fa, and verify-token)
     pub async fn post_signup<Body>(&self, body: &Body) -> reqwest::Response
     where
         Body: serde::Serialize,
@@ -74,8 +70,6 @@ impl TestApp {
             .await
             .expect("Failed to execute request.")
     }
-
-    
     pub async fn post_login<Body>(&self, body: &Body) -> reqwest::Response
     where
         Body: serde::Serialize,
@@ -87,18 +81,20 @@ impl TestApp {
             .await
             .expect("Failed to execute request.")
     }
-
-    pub async fn post_logout (&self) -> reqwest::Response {
+    pub async fn post_logout(&self) -> reqwest::Response {
         self.http_client
-            .post(&format!("{}/logout", &self.address))
+            .post(format!("{}/logout", &self.address))
             .send()
             .await
             .expect("Failed to execute request.")
     }
 
-    pub async fn verify_2fa<T: Serialize> (&self, body: &T) -> reqwest::Response {
+    pub async fn post_verify_2fa<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
         self.http_client
-            .post(&format!("{}/verify-2fa", &self.address))
+            .post(format!("{}/verify-2fa", &self.address))
             .json(body)
             .send()
             .await

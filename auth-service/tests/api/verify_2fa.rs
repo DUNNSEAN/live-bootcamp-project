@@ -15,7 +15,7 @@ async fn verify_2fa_returns_200() {
         "2fa_code": two_factor_code,
     });
 
-    let response = app.verify_2fa(&body).await;
+    let response = app.post_verify_2fa(&body).await;
 
     assert_eq!(response.status().as_u16(), 200);
 }
