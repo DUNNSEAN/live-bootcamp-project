@@ -1,5 +1,5 @@
 use reqwest::cookie::Jar;
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 use tokio::sync::RwLock;
 
 use auth_service::{
@@ -12,8 +12,7 @@ use auth_service::{
 use uuid::Uuid;
 
 use sqlx::{
-    postgres::PgPoolOptions,
-    Executor, PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions}, Connection, Executor, PgConnection, PgPool
 };
 
 pub struct TestApp {
@@ -23,6 +22,7 @@ pub struct TestApp {
     pub two_fa_code_store: TwoFACodeStoreType,
     pub http_client: reqwest::Client,
     pub db_name: String,
+    pub clean_up_called: bool,
 }
 impl TestApp {
     pub async fn new() -> Self {
@@ -58,6 +58,7 @@ impl TestApp {
             two_fa_code_store,
             http_client,
             db_name,
+            clean_up_called: false,
         }
     }
     pub async fn get_root(&self) -> reqwest::Response {
@@ -120,6 +121,24 @@ impl TestApp {
             .await
             .expect("Failed to execute request.")
     }
+
+    pub async fn clean_up(&mut self) {
+        if self.clean_up_called {
+            return;
+        }
+
+        delete_database(&self.db_name).await;
+
+        self.clean_up_called = true;
+    }
+}
+
+impl Drop for TestApp {
+    fn drop(&mut self) {
+        if !self.clean_up_called {
+            panic!("TestApp::clean_up was not called before dropping TestApp");
+        }
+    }
 }
 
 pub fn get_random_email() -> String {
@@ -136,6 +155,40 @@ async fn configure_postgresql(db_name: &str) -> PgPool {
     get_postgres_pool(&postgresql_conn_url_with_db)
         .await
         .expect("Failed to create Postgres connection pool!")
+}
+
+async fn delete_database(db_name: &str) {
+    let postgresql_conn_url = DATABASE_URL.to_owned();
+
+    let connection_options = PgConnectOptions::from_str(&postgresql_conn_url)
+        .expect("Failed to parse PostgreSQL connection string");
+
+    let mut connection = PgConnection::connect_with(&connection_options)
+        .await
+        .expect("Failed to connect to Postgres");
+
+    // Kill active connections to the database
+    connection
+        .execute(
+            format!(
+                r#"
+                SELECT pg_terminate_backend(pg_stat_activity.pid)
+                FROM pg_stat_activity
+                WHERE pg_stat_activity.datname = '{}'
+                  AND pid <> pg_backend_pid();
+        "#,
+                db_name
+            )
+            .as_str(),
+        )
+        .await
+        .expect("Failed to drop the database.");
+
+    // Drop the database
+    connection
+        .execute(format!(r#"DROP DATABASE "{}";"#, db_name).as_str())
+        .await
+        .expect("Failed to drop the database.");
 }
 
 async fn configure_database(db_conn_string: &str, db_name: &str) {
