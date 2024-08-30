@@ -3,7 +3,7 @@ use sqlx::PgPool;
 use tokio::sync::RwLock;
 
 use auth_service::{
-    app_state::AppState, get_postgres_pool, services::{data_stores::{hashmap_two_fa_code_store::HashmapTwoFACodeStore, hashmap_user_store::HashmapUserStore, hashset_banned_token_store::HashsetBannedTokenStore}, mock_email_client::MockEmailClient,
+    app_state::AppState, get_postgres_pool, services::{data_stores::{hashmap_two_fa_code_store::HashmapTwoFACodeStore, postgres_user_store::PostgresUserStore, hashset_banned_token_store::HashsetBannedTokenStore}, mock_email_client::MockEmailClient,
     }, utils::constants::{prod, DATABASE_URL}, Application
 };
 
@@ -12,7 +12,7 @@ async fn main() {
     // We will use this PostgreSQL pool in the next task! 
     let pg_pool = configure_postgresql().await;
 
-    let user_store = Arc::new(RwLock::new(HashmapUserStore::default()));
+    let user_store = Arc::new(RwLock::new(PostgresUserStore::new(pg_pool)));
     let banned_token_store = Arc::new(RwLock::new(HashsetBannedTokenStore::default()));
     let two_fa_code_store = Arc::new(RwLock::new(HashmapTwoFACodeStore::default()));
 
