@@ -3,7 +3,7 @@ use std::{str::FromStr, sync::Arc};
 use tokio::sync::RwLock;
 
 use auth_service::{
-    app_state::{AppState, BannedTokenStoreType, TwoFACodeStoreType}, get_postgres_pool, get_redis_client, services::{data_stores::{hashmap_two_fa_code_store::HashmapTwoFACodeStore, postgres_user_store::PostgresUserStore, redis_banned_token_store::RedisBannedTokenStore}, mock_email_client::MockEmailClient}, utils::constants::{test, DATABASE_URL, REDIS_HOST_NAME}, Application
+    app_state::{AppState, BannedTokenStoreType, TwoFACodeStoreType}, get_postgres_pool, get_redis_client, services::{data_stores::{redis_two_fa_code_store::RedisTwoFACodeStore, postgres_user_store::PostgresUserStore, redis_banned_token_store::RedisBannedTokenStore}, mock_email_client::MockEmailClient}, utils::constants::{test, DATABASE_URL, REDIS_HOST_NAME}, Application
 };
 use uuid::Uuid;
 
@@ -29,7 +29,8 @@ impl TestApp {
         let user_store = Arc::new(RwLock::new(PostgresUserStore::new(pg_pool)));
         let banned_token_store = Arc::new(RwLock::new(RedisBannedTokenStore::new(
             redis_connection.clone(),
-        )));let two_fa_code_store = Arc::new(RwLock::new(HashmapTwoFACodeStore::default()));
+        )));
+        let two_fa_code_store = Arc::new(RwLock::new(RedisTwoFACodeStore::new(redis_connection)));
 
         let email_client = Arc::new(MockEmailClient);
 
