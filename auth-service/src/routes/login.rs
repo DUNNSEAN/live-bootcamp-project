@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     app_state::AppState,
-    domain::{AuthAPIError, Email, LoginAttemptId, Password, TwoFACode},
+    domain::{AuthAPIError, Email, LoginAttemptId, Password, TwoFACode, UnverifiedUser, User, VerifiedUser},
     utils::auth::generate_auth_cookie,
 };
 
@@ -21,18 +21,17 @@ pub async fn login(
         Ok(email) => email,
         Err(_) => return (jar, Err(AuthAPIError::InvalidCredentials)),
     };
-    let user_store = &state.user_store.read().await;
-    if user_store.validate_user(&email, &password).await.is_err() {
-        return (jar, Err(AuthAPIError::IncorrectCredentials));
-    }
-    let user = match user_store.get_user(&email).await {
+
+    let unverified_user = User::<UnverifiedUser>::new(email.clone(), password.clone(), true);
+    
+    let user = match unverified_user.validate(State(state.clone())).await {
         Ok(user) => user,
-        Err(_) => return (jar, Err(AuthAPIError::IncorrectCredentials)),
+        Err(e) => return (jar, Err(e)),
     };
 
     match user.requires_2fa {
-        true => handle_2fa(&user.email, &state, jar).await,
-        false => handle_no_2fa(&user.email, jar).await,
+        true => User::<VerifiedUser>::handle_2fa(&user.email, &state, jar).await,
+        false => User::<VerifiedUser>::handle_no_2fa(&user.email, jar).await,
     }
 }
 async fn handle_2fa(
