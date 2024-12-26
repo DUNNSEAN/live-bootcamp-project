@@ -1,10 +1,10 @@
 use auth_service::{routes::SignupResponse, ErrorResponse};
+use test_helpers::api_test;
+
 use crate::helpers::{get_random_email, TestApp};
 
-#[tokio::test]
+#[api_test]
 async fn should_return_201_if_valid_input() {
-    let mut app = TestApp::new().await;
-
     let random_email = get_random_email();
 
     let signup_body = serde_json::json!({
@@ -28,14 +28,10 @@ async fn should_return_201_if_valid_input() {
             .expect("Could not deserialize response body to UserBody"),
         expected_response
     );
-
-    app.clean_up().await;
 }
 
-#[tokio::test]
+#[api_test]
 async fn should_return_400_if_invalid_input() {
-    let mut app = TestApp::new().await;
-
     let random_email = get_random_email();
 
     let input = [
@@ -79,14 +75,10 @@ async fn should_return_400_if_invalid_input() {
             "Invalid credentials".to_owned()
         );
     }
-
-    app.clean_up().await;
 }
 
-#[tokio::test]
+#[api_test]
 async fn should_return_409_if_email_already_exists() {
-    let mut app = TestApp::new().await;
-
     let random_email = get_random_email();
 
     let signup_body = serde_json::json!({
@@ -111,14 +103,12 @@ async fn should_return_409_if_email_already_exists() {
             .error,
         "User already exists".to_owned()
     );
-
-    app.clean_up().await;
 }
 
-#[tokio::test]
+#[api_test]
 async fn should_return_422_if_malformed_input() {
-    let mut app = TestApp::new().await;
     let random_email = get_random_email();
+
     let test_cases = [
         serde_json::json!({
             "password": "password123",
@@ -133,12 +123,13 @@ async fn should_return_422_if_malformed_input() {
             "password": "password123",
         }),
         serde_json::json!({
-            "email": "sdunnemail.com",
+            "email": random_email,
             "password": "password123",
             "requires2FA": "true"
         }),
         serde_json::json!({}),
     ];
+
     for test_case in test_cases.iter() {
         let response = app.post_signup(test_case).await;
         assert_eq!(
@@ -148,6 +139,4 @@ async fn should_return_422_if_malformed_input() {
             test_case
         );
     }
-
-    app.clean_up().await;
 }

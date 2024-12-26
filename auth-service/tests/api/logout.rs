@@ -1,12 +1,12 @@
 use auth_service::{utils::constants::JWT_COOKIE_NAME, ErrorResponse};
 use reqwest::Url;
+use secrecy::Secret;
+use test_helpers::api_test;
 
 use crate::helpers::{get_random_email, TestApp};
 
-#[tokio::test]
+#[api_test]
 async fn should_return_200_if_valid_jwt_cookie() {
-    let app = TestApp::new().await;
-
     let random_email = get_random_email();
 
     let signup_body = serde_json::json!({
@@ -35,7 +35,7 @@ async fn should_return_200_if_valid_jwt_cookie() {
 
     assert!(!auth_cookie.value().is_empty());
 
-    let token = auth_cookie.value();
+    let token = Secret::new(auth_cookie.value().to_owned());
 
     let response = app.post_logout().await;
 
@@ -50,19 +50,41 @@ async fn should_return_200_if_valid_jwt_cookie() {
 
     let banned_token_store = app.banned_token_store.read().await;
     let contains_token = banned_token_store
-        .contains_token(token)
+        .contains_token(&token)
         .await
         .expect("Failed to check if token is banned");
 
     assert!(contains_token);
-
-    //app.clean_up().await;
 }
 
-#[tokio::test]
-async fn should_return_400_if_logout_called_twice_in_a_row() {
-    let mut app = TestApp::new().await;
+#[api_test]
+async fn should_return_400_if_jwt_cookie_missing() {
+    let response = app.post_logout().await;
 
+    assert_eq!(
+        response.status().as_u16(),
+        400,
+        "The API did not return a 400 BAD REQUEST",
+    );
+
+    let auth_cookie = response
+        .cookies()
+        .find(|cookie| cookie.name() == JWT_COOKIE_NAME);
+
+    assert!(auth_cookie.is_none());
+
+    assert_eq!(
+        response
+            .json::<ErrorResponse>()
+            .await
+            .expect("Could not deserialize response body to ErrorResponse")
+            .error,
+        "Missing auth token".to_owned()
+    );
+}
+
+#[api_test]
+async fn should_return_400_if_logout_called_twice_in_a_row() {
     let random_email = get_random_email();
 
     let signup_body = serde_json::json!({
@@ -112,44 +134,10 @@ async fn should_return_400_if_logout_called_twice_in_a_row() {
             .error,
         "Missing auth token".to_owned()
     );
-
-    app.clean_up().await;
 }
 
-#[tokio::test]
-async fn should_return_400_if_jwt_cookie_missing() {
-    let mut app = TestApp::new().await;
-
-    let response = app.post_logout().await;
-
-    assert_eq!(
-        response.status().as_u16(),
-        400,
-        "The API did not return a 400 BAD REQUEST",
-    );
-
-    let auth_cookie = response
-        .cookies()
-        .find(|cookie| cookie.name() == JWT_COOKIE_NAME);
-
-    assert!(auth_cookie.is_none());
-
-    assert_eq!(
-        response
-            .json::<ErrorResponse>()
-            .await
-            .expect("Could not deserialize response body to ErrorResponse")
-            .error,
-        "Missing auth token".to_owned()
-    );
-
-    app.clean_up().await;
-}
-
-#[tokio::test]
+#[api_test]
 async fn should_return_401_if_invalid_token() {
-    let mut app = TestApp::new().await;
-
     // add invalid cookie
     app.cookie_jar.add_cookie_str(
         &format!(
@@ -177,6 +165,4 @@ async fn should_return_401_if_invalid_token() {
             .error,
         "Invalid auth token".to_owned()
     );
-
-    app.clean_up().await;
 }
