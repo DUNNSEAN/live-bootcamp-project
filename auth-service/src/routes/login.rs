@@ -1,5 +1,6 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use axum_extra::extract::CookieJar;
+use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -53,7 +54,6 @@ async fn handle_2fa(
     let login_attempt_id = LoginAttemptId::default();
     let two_fa_code = TwoFACode::default();
 
-    // Updated!
     if let Err(e) = state
         .two_fa_code_store
         .write()
@@ -64,10 +64,9 @@ async fn handle_2fa(
         return (jar, Err(AuthAPIError::UnexpectedError(e.into())));
     }
 
-    // Updated!
     if let Err(e) = state
         .email_client
-        .send_email(email, "2FA Code", two_fa_code.as_ref())
+        .send_email(email, "2FA Code", two_fa_code.as_ref().expose_secret())
         .await
     {
         return (jar, Err(AuthAPIError::UnexpectedError(e)));
@@ -75,7 +74,7 @@ async fn handle_2fa(
 
     let response = Json(LoginResponse::TwoFactorAuth(TwoFactorAuthResponse {
         message: "2FA required".to_owned(),
-        login_attempt_id: login_attempt_id.as_ref().to_owned(),
+        login_attempt_id: login_attempt_id.as_ref().expose_secret().to_owned(),
     }));
 
     (jar, Ok((StatusCode::PARTIAL_CONTENT, response)))
@@ -91,7 +90,7 @@ async fn handle_no_2fa(
 ) {
     let auth_cookie = match generate_auth_cookie(email) {
         Ok(cookie) => cookie,
-        Err(e) => return (jar, Err(AuthAPIError::UnexpectedError(e))), // Updated!
+        Err(e) => return (jar, Err(AuthAPIError::UnexpectedError(e))),
     };
 
     let updated_jar = jar.add(auth_cookie);
@@ -104,8 +103,8 @@ async fn handle_no_2fa(
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
-    email: String,
-    password: String,
+    email: Secret<String>,
+    password: Secret<String>,
 }
 
 #[derive(Debug, Serialize)]
