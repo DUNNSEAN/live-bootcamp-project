@@ -1,4 +1,3 @@
-use std::error::Error;
 
 use argon2::{
     password_hash::SaltString, Algorithm, Argon2, Params, PasswordHash, PasswordHasher,
