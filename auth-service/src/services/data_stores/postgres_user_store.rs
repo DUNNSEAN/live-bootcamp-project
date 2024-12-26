@@ -12,6 +12,8 @@ use crate::domain::{
     Email, Password, User,
 };
 
+use color_eyre::eyre::{eyre, Context, Result};
+
 pub struct PostgresUserStore {
     pool: PgPool,
 }
@@ -24,11 +26,11 @@ impl PostgresUserStore {
 
 #[async_trait::async_trait]
 impl UserStore for PostgresUserStore {
-    #[tracing::instrument(name = "Adding user to PostgreSQL", skip_all)] // New!
+    #[tracing::instrument(name = "Adding user to PostgreSQL", skip_all)]
     async fn add_user(&mut self, user: User) -> Result<(), UserStoreError> {
         let password_hash = compute_password_hash(user.password.as_ref().to_owned())
             .await
-            .map_err(|_| UserStoreError::UnexpectedError)?;
+            .map_err(UserStoreError::UnexpectedError)?; // Updated!
 
         sqlx::query!(
             r#"
@@ -41,12 +43,12 @@ impl UserStore for PostgresUserStore {
         )
         .execute(&self.pool)
         .await
-        .map_err(|_| UserStoreError::UnexpectedError)?;
+        .map_err(|e| UserStoreError::UnexpectedError(e.into()))?; // Updated!
 
         Ok(())
     }
 
-    #[tracing::instrument(name = "Retrieving user from PostgreSQL", skip_all)] // New!
+    #[tracing::instrument(name = "Retrieving user from PostgreSQL", skip_all)]
     async fn get_user(&self, email: &Email) -> Result<User, UserStoreError> {
         sqlx::query!(
             r#"
@@ -58,12 +60,13 @@ impl UserStore for PostgresUserStore {
         )
         .fetch_optional(&self.pool)
         .await
-        .map_err(|_| UserStoreError::UnexpectedError)?
+        .map_err(|e| UserStoreError::UnexpectedError(e.into()))?
         .map(|row| {
             Ok(User {
-                email: Email::parse(row.email).map_err(|_| UserStoreError::UnexpectedError)?,
+                email: Email::parse(row.email)
+                    .map_err(|e| UserStoreError::UnexpectedError(eyre!(e)))?, // Updated!
                 password: Password::parse(row.password_hash)
-                    .map_err(|_| UserStoreError::UnexpectedError)?,
+                    .map_err(|e| UserStoreError::UnexpectedError(eyre!(e)))?, // Updated!
                 requires_2fa: row.requires_2fa,
             })
         })
@@ -87,24 +90,20 @@ impl UserStore for PostgresUserStore {
     }
 }
 
-#[tracing::instrument(name = "Verify password hash", skip_all)] // New!
+#[tracing::instrument(name = "Verify password hash", skip_all)]
 async fn verify_password_hash(
     expected_password_hash: String,
     password_candidate: String,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    // This line retrieves the current span from the tracing context. 
-    // The span represents the execution context for the compute_password_hash function.
-    let current_span: tracing::Span = tracing::Span::current(); // New!
+) -> Result<()> { // Changed!
+    let current_span: tracing::Span = tracing::Span::current();
     let result = tokio::task::spawn_blocking(move || {
-        // This code block ensures that the operations within the closure are executed within the context of the current span. 
-        // This is especially useful for tracing operations that are performed in a different thread or task, such as within tokio::task::spawn_blocking.
-        current_span.in_scope(|| { // New!
+        current_span.in_scope(|| {
             let expected_password_hash: PasswordHash<'_> =
                 PasswordHash::new(&expected_password_hash)?;
 
             Argon2::default()
                 .verify_password(password_candidate.as_bytes(), &expected_password_hash)
-                .map_err(|e| e.into())
+                .wrap_err("failed to verify password hash")
         })
     })
     .await;
@@ -112,16 +111,12 @@ async fn verify_password_hash(
     result?
 }
 
-#[tracing::instrument(name = "Computing password hash", skip_all)] //New!
-async fn compute_password_hash(password: String) -> Result<String, Box<dyn Error + Send + Sync>> {
-    // This line retrieves the current span from the tracing context. 
-    // The span represents the execution context for the compute_password_hash function.
-    let current_span: tracing::Span = tracing::Span::current(); // New!
+#[tracing::instrument(name = "Computing password hash", skip_all)]
+async fn compute_password_hash(password: String) -> Result<String> { // Changed!
+    let current_span: tracing::Span = tracing::Span::current();
 
     let result = tokio::task::spawn_blocking(move || {
-        // This code block ensures that the operations within the closure are executed within the context of the current span. 
-        // This is especially useful for tracing operations that are performed in a different thread or task, such as within tokio::task::spawn_blocking.
-        current_span.in_scope(|| { // New!
+        current_span.in_scope(|| {
             let salt: SaltString = SaltString::generate(&mut rand::thread_rng());
             let password_hash = Argon2::new(
                 Algorithm::Argon2id,
@@ -132,6 +127,7 @@ async fn compute_password_hash(password: String) -> Result<String, Box<dyn Error
             .to_string();
 
             Ok(password_hash)
+            // Err(eyre!("oh no!")) // New!
         })
     })
     .await;
